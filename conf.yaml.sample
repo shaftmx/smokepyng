@@ -1,0 +1,8 @@
+csv_path: ./csv
+plot_path: ./plot
+urls:
+  - url: http://www.google.com
+    label: google
+    render_step: 2s
+    render_rows: 30 # number of step you wand to keep. 6 x 10s = 60sec
+    fetch_period: 0.1
