@@ -8,6 +8,9 @@ from os.path import join as os_join
 import os
 from yaml import load as load_yaml
 import argparse
+from Queue import Empty
+from multiprocessing import Process, Queue, current_process, freeze_support
+from multiprocessing.sharedctypes import Value
 
 try:
     import matplotlib.pyplot as plt
@@ -145,22 +148,73 @@ def start_fetch(config):
 
 
 
-if __name__ == '__main__':
+#if __name__ == '__main__':
+#
+#    init_logger()
+#
+#    args = get_args()
+#
+#    # Load config
+#    config = load_yaml(args.config_file)
+#    print config
+#
+#    if args.fetch:
+#        start_fetch(config)
+#    elif args.resample:
+#        resample_csvs(config)
+#    elif args.plot:
+#        plot_csvs(config)
 
-    init_logger()
 
-    args = get_args()
 
-    # Load config
-    config = load_yaml(args.config_file)
+def worker(stop_process, result_queue, config, url):
+    while stop_process.value != 1:
+        time.sleep(1)
+        print url
+        result_queue.put(url)
+        # If scheduled curl go or do nothing
+
+
+def consumer(stop_process, result_queue):
+    # Get and print results
+    print 'Start consumer :'
+    while stop_process.value != 1:
+        try:
+            msg = result_queue.get_nowait()
+            print 'Receved ->>> %s\n' % msg
+        except Empty:
+            print '.'
+            time.sleep(0.1)
+
+def test():
+
+    config = load_yaml(open('./conf.yaml.sample','r'))
     print config
 
-    if args.fetch:
-        start_fetch(config)
-    elif args.resample:
-        resample_csvs(config)
-    elif args.plot:
-        plot_csvs(config)
+    # Create queues
+    #admin_queue = Queue() # for stop
+    result_queue = Queue() # for results
+    stop_process = Value('i', 0)
+
+    for url in config.get('urls'):
+        Process(target=worker, args=(stop_process, result_queue, config, url)).start()
+
+    time.sleep(5)
+
+
+    # Launch consumer
+    Process(target=consumer, args=(stop_process, result_queue)).start()
+
+    time.sleep(1)
+
+# if keyboard interrupt envoyer un stop aux process
+    stop_process.value = 1
+
+    exit(1)
+
+
+if __name__ == '__main__':
+    test()
 
 
 
