@@ -5,4 +5,4 @@ urls:
     label: google
     render_step: 2s
     render_rows: 30 # number of step you wand to keep. 30 x 2s = 60sec
-    fetch_period: 0.1
+    fetch_period: 2s

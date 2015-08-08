@@ -11,6 +11,9 @@ import argparse
 from Queue import Empty
 from multiprocessing import Process, Queue, current_process, freeze_support
 from multiprocessing.sharedctypes import Value
+from scheduler import Job
+import signal
+import sys
 
 try:
     import matplotlib.pyplot as plt
@@ -18,7 +21,7 @@ except ImportError:
     print 'Error : need to install python-matplotlib'
 
 
-LOG = logging.getLogger()
+LOG = logging.getLogger('smokepyng')
 
 def init_logger():
     "Init logger and handler"
@@ -64,25 +67,31 @@ def check_http(url):
     date_format = time.strftime('%Y-%m-%d %H:%M:%S', local_time)
     return date_format, time.time() - start
 
-def record_http_time(url, record_file):
+def record_http_time(record, record_file):
+    """Write new line in csv file. If the file is new
+    write also the header"""
     # Write header line
     if not isfile(record_file):
         with open(record_file, 'a') as f:
             f.write( 'date,time\n')
     # Write one line of stats
     with open(record_file, 'a') as f:
-        f.write( '%s,%s\n' % check_http(url))
+        f.write( '%s,%s\n' % record)
 
 def ensure_dir(path):
+    "Ensure a directory exist or create it."
     if not os.path.isdir(path):
         os.makedirs(path)
 
 def resampled_time_serie(time_serie, rows, step):
-    # Resample datas. Merge all data for the same time and get last rows x step time
+    """Resample datas. Merge all data for the same time and
+       get last rows * step time"""
     time_serie = time_serie.resample(step, how='mean')[-rows:]
     return time_serie
 
 def resample_csvs(config):
+    """Resample csv files to match the config.
+     Do the average and delete spared values"""
     csv_path = config.get('csv_path')
     # For each urls
     for url_config in config.get('urls'):
@@ -105,6 +114,7 @@ def resample_csvs(config):
         time_serie.to_csv(csv_file, header=['time'], index_label='date')
 
 def plot_csvs(config):
+    """Generate png graphs for all urls. From csv files"""
     # Ensure directory exist
     plot_path = config.get('plot_path')
     csv_path = config.get('csv_path')
@@ -121,7 +131,7 @@ def plot_csvs(config):
 
         if not isfile(csv_file):
             continue
-        # Resample datas for desired time periode
+        # Resample datas to display desired time periode
         time_serie =  pd.read_csv(csv_file, index_col=0, parse_dates=True)
         time_serie = resampled_time_serie(time_serie=time_serie,
                                          rows=render_rows,
@@ -132,91 +142,105 @@ def plot_csvs(config):
         figure = plot.get_figure()
         figure.savefig(figure_file)
 
+def worker(stop_process, result_queue, global_config, url_config):
+    """Just fetch url every fetch_periode"""
 
-def start_fetch(config):
-    # Ensure directory exist
+    # Disable ctrl + c
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+    url = url_config.get('url')
+    label = url_config.get('label')
+    fetch_period = url_config.get('fetch_period')
+
+    LOG.info('worker - Start worker %s' % label)
+
+    job = Job(name=label,
+              every=fetch_period,
+              func=check_http,
+              func_args={'url':url})
+
+    while stop_process.value != 1:
+        # If scheduled curl go or do nothing
+        if job.should_run():
+            LOG.info('worker - curl url %s' % url)
+            job_result = job.run()
+            
+            result_queue.put({'job_result': job_result, 'url_config': url_config})
+        time.sleep(0.1)
+
+
+def consumer(stop_process, result_queue, config):
+    "Consume results from workers. And write them in csv files"
+    # Disable ctrl + c
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+    # Ensure directory exist (move to consumer)
     csv_path = config.get('csv_path')
     ensure_dir(csv_path)
-    # Start fetch all urls
-    for url_config in config.get('urls'):
-        url = url_config.get('url')
-        label = url_config.get('label')
-        fetch_period = url_config.get('fetch_period')
-        for i in range(10):
-            record_http_time(url=url, record_file=os_join(csv_path, '%s.csv' % label))
-            time.sleep(fetch_period)
 
-
-
-#if __name__ == '__main__':
-#
-#    init_logger()
-#
-#    args = get_args()
-#
-#    # Load config
-#    config = load_yaml(args.config_file)
-#    print config
-#
-#    if args.fetch:
-#        start_fetch(config)
-#    elif args.resample:
-#        resample_csvs(config)
-#    elif args.plot:
-#        plot_csvs(config)
-
-
-
-def worker(stop_process, result_queue, config, url):
-    while stop_process.value != 1:
-        time.sleep(1)
-        print url
-        result_queue.put(url)
-        # If scheduled curl go or do nothing
-
-
-def consumer(stop_process, result_queue):
     # Get and print results
-    print 'Start consumer :'
+    LOG.info('consumer - Start consumer')
     while stop_process.value != 1:
         try:
             msg = result_queue.get_nowait()
-            print 'Receved ->>> %s\n' % msg
+            label = msg['url_config']['label']
+            record = msg['job_result']
+            record_file = os_join(csv_path, '%s.csv' % label)
+            LOG.debug('consumer - Receved ->>> %s\n' % str(msg))
+            LOG.info('consumer - Save record %s in %s\n' % (str(record), record_file))
+            record_http_time(record=record, record_file=record_file)
         except Empty:
-            print '.'
+            sys.stdout.write('.')
+            sys.stdout.flush()
             time.sleep(0.1)
 
-def test():
-
-    config = load_yaml(open('./conf.yaml.sample','r'))
-    print config
+def start_fetch(config):
+    """Launch workers and consumer.
+         * Workers : one by url. The worker fetch a url and return fetch time
+         * consumer : Just one. Get datas returned by workers
+                      and write them to csv files"""
 
     # Create queues
-    #admin_queue = Queue() # for stop
     result_queue = Queue() # for results
-    stop_process = Value('i', 0)
+    stop_process = Value('i', 0) # Integer shared value
 
-    for url in config.get('urls'):
-        Process(target=worker, args=(stop_process, result_queue, config, url)).start()
+    # Start fetch all urls
+    for url_config in config.get('urls'):
+        # Launch workers : process who fetch website and push result in result_queue
+        Process(target=worker, args=(stop_process, result_queue, config, url_config)).start()
 
-    time.sleep(5)
+    # Launch consumer : process that write results from result_queue in csv files
+    consumer_process = Process(target=consumer, args=(stop_process, result_queue, config))
+    consumer_process.start()
+
+    # run forever
+    try:
+        consumer_process.join()
+        #while True:
+        #    time.sleep(0.5)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        stop_process.value = 1
 
 
-    # Launch consumer
-    Process(target=consumer, args=(stop_process, result_queue)).start()
-
-    time.sleep(1)
-
-# if keyboard interrupt envoyer un stop aux process
-    stop_process.value = 1
-
-    exit(1)
 
 
 if __name__ == '__main__':
-    test()
 
+    init_logger()
 
+    args = get_args()
+
+    # Load config
+    config = load_yaml(args.config_file)
+
+    if args.fetch:
+        start_fetch(config)
+    elif args.resample:
+        resample_csvs(config)
+    elif args.plot:
+        plot_csvs(config)
 
 
 
