@@ -34,3 +34,9 @@ Resample datas. Merge datas between steps :
   python smokepyng.py -f conf.yaml.sample --resample
 ```
 
+
+Screenshot
+==========
+
+![ScreenShot](https://raw.github.com/shaftmx/somkepyng/master/screenshots/google.png)
+
