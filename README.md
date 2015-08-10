@@ -2,8 +2,9 @@
 
 Simple HTTP smoke ping in python. Based on panda timeseries an pygal graphs
 
-Usage ::
+Usage :
 
+```
   usage: smokepyng.py [-h] -f CONFIG_FILE [--resample] [--fetch] [--plot]
   
   optional arguments:
@@ -13,16 +14,23 @@ Usage ::
     --resample            Resample data in csv to optimize csv size
     --fetch               Start fetch urls
     --plot                Generate graphs fro all csv files
+```
 
-Launch the script to fetch urls (ctrl + c to exit) ::
+Launch the script to fetch urls (ctrl + c to exit) :
 
+```
   python smokepyng.py -f conf.yaml.sample --fetch
+```
 
-Generate graph for all urls ::
+Generate graph for all urls :
 
+```
   python smokepyng.py -f conf.yaml.sample --plot
+```
 
-Resample datas. Merge datas between steps ::
+Resample datas. Merge datas between steps :
 
+```
   python smokepyng.py -f conf.yaml.sample --resample
+```
 
