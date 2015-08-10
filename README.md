@@ -38,5 +38,5 @@ Resample datas. Merge datas between steps :
 Screenshot
 ==========
 
-![ScreenShot](https://raw.github.com/shaftmx/somkepyng/master/screenshots/google.png)
+![ScreenShot](https://raw.githubusercontent.com/shaftmx/smokepyng/master/screenshot/google.png)
 
