@@ -6,3 +6,8 @@ urls:
     render_step: 2s
     render_rows: 30 # number of step you wand to keep. 30 x 2s = 60sec
     fetch_period: 2s
+  - url: http://www.google.fr
+    label: googlefr
+    render_step: 2s
+    render_rows: 30 # number of step you wand to keep. 30 x 2s = 60sec
+    fetch_period: 2s
