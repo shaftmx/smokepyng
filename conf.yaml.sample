@@ -1,3 +1,4 @@
+consumer_frequency: 0.1
 csv_path: ./csv
 plot_path: ./plot
 urls:

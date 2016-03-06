@@ -80,9 +80,13 @@ def get_args():
 def check_http(url):
     "Return date when request start. And latency time"
     start = time.time()
-    requests.get(url)
     local_time = time.localtime(start)
     date_format = time.strftime('%Y-%m-%d %H:%M:%S', local_time)
+    try:
+        requests.get(url)
+    except requests.ConnectionError as e:
+        LOG.warning('Unable to curl %s : %s' % (url, e))
+        return date_format, ''
     return date_format, time.time() - start
 
 def record_http_time(record, record_file):
@@ -210,7 +214,7 @@ def consumer(stop_process, result_queue, config):
         except Empty:
             sys.stdout.write('.')
             sys.stdout.flush()
-            time.sleep(0.1)
+            time.sleep(config.get('consumer_frequency', 0.1))
 
 def start_fetch(config):
     """Launch workers and consumer.
